@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="navy">#14243B</color>
+    <color name="navy_light">#233A58</color>
+    <color name="gold">#D9A958</color>
+    <color name="gold_light">#F7E8CA</color>
+    <color name="canvas">#F8F6F2</color>
+    <color name="ink">#19283B</color>
+    <color name="muted">#677487</color>
+    <color name="white">#FFFFFF</color>
+    <color name="error">#B3261E</color>
+</resources>
