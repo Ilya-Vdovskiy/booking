@@ -1,9 +1,17 @@
 package ru.lumastay.app;
 
+import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.CalendarContract;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -11,8 +19,12 @@ import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.NotificationCompat;
 import androidx.core.util.Pair;
 
 import com.google.android.material.button.MaterialButton;
@@ -35,6 +47,7 @@ import java.util.Set;
 import java.util.TimeZone;
 
 public final class MainActivity extends AppCompatActivity {
+    private static final String CHANNEL_ID = "booking_status";
     private static final String[] FIELDS = {"checkIn", "checkOut", "name", "passport", "phone", "email", "guests", "room", "wishes"};
     private final Map<String, TextInputLayout> layouts = new HashMap<>();
     private final Set<String> touched = new HashSet<>();
@@ -42,13 +55,18 @@ public final class MainActivity extends AppCompatActivity {
     private ScrollView scroll;
     private TextInputEditText nameEdit, passportEdit, phoneEdit, emailEdit, guestsEdit, wishesEdit, checkInEdit, checkOutEdit;
     private MaterialAutoCompleteTextView roomEdit;
-    private MaterialButton submitButton;
-    private TextView staySummary;
+    private MaterialButton submitButton, notificationsButton;
+    private TextView staySummary, notificationStatus;
+    private ActivityResultLauncher<String> permissionLauncher;
     private Long checkIn, checkOut;
     private boolean restoring;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        permissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            refreshNotificationStatus();
+            if (!granted) Toast.makeText(this, "Без уведомлений форма и календарь доступны", Toast.LENGTH_LONG).show();
+        });
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences("booking_draft", MODE_PRIVATE);
         bindViews();
@@ -56,6 +74,7 @@ public final class MainActivity extends AppCompatActivity {
         setupInputs();
         restoreDraft();
         refreshValidation();
+        refreshNotificationStatus();
     }
 
     private void bindViews() {
@@ -70,7 +89,9 @@ public final class MainActivity extends AppCompatActivity {
         checkOutEdit = findViewById(R.id.check_out);
         roomEdit = findViewById(R.id.room);
         submitButton = findViewById(R.id.submit_button);
+        notificationsButton = findViewById(R.id.notifications_button);
         staySummary = findViewById(R.id.stay_summary);
+        notificationStatus = findViewById(R.id.notification_status);
         layouts.put("checkIn", findViewById(R.id.check_in_layout));
         layouts.put("checkOut", findViewById(R.id.check_out_layout));
         layouts.put("name", findViewById(R.id.name_layout));
@@ -112,6 +133,7 @@ public final class MainActivity extends AppCompatActivity {
         checkOutEdit.setOnClickListener(view -> pickDates());
         findViewById(R.id.check_button).setOnClickListener(view -> validateForm(true));
         submitButton.setOnClickListener(view -> confirmBooking());
+        notificationsButton.setOnClickListener(view -> explainNotificationPermission());
     }
 
     private void watch(String key, TextInputEditText edit) {
@@ -270,11 +292,73 @@ public final class MainActivity extends AppCompatActivity {
         for (TextInputLayout layout : layouts.values()) layout.setError(null);
         refreshValidation();
         scroll.smoothScrollTo(0, 0);
+        showLocalNotification();
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Заявка подготовлена")
-                .setMessage("Демо-заявка подтверждена на этом устройстве.")
-                .setPositiveButton("Понятно", (dialog, which) -> { })
+                .setMessage("Демо-заявка подтверждена на этом устройстве. Добавить даты проживания в календарь?")
+                .setNegativeButton("Не сейчас", (dialog, which) -> { })
+                .setPositiveButton("В календарь", (dialog, which) -> openCalendar(draft))
                 .show();
+    }
+
+    private void explainNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            refreshNotificationStatus();
+            return;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Уведомление о заявке")
+                .setMessage("Разрешите уведомления, чтобы получить подтверждение после заполнения формы. Если откажете, заявка и календарь продолжат работать.")
+                .setNegativeButton("Позже", (dialog, which) -> { })
+                .setPositiveButton("Продолжить", (dialog, which) -> permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS))
+                .show();
+    }
+
+    private void refreshNotificationStatus() {
+        boolean enabled = Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        notificationStatus.setText(enabled
+                ? "Уведомления доступны. После подтверждения появится сообщение."
+                : "Можно получить уведомление о подготовленной заявке. Это необязательно.");
+        notificationsButton.setVisibility(enabled ? View.GONE : View.VISIBLE);
+    }
+
+    private void showLocalNotification() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(
+                new NotificationChannel(CHANNEL_ID, "Статус заявки", NotificationManager.IMPORTANCE_DEFAULT));
+        PendingIntent pending = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        manager.notify(1, new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_luma_mark)
+                .setContentTitle("Люма: заявка подготовлена")
+                .setContentText("Даты проживания можно добавить в календарь")
+                .setAutoCancel(true)
+                .setContentIntent(pending)
+                .build());
+    }
+
+    private void openCalendar(BookingDraft draft) {
+        if (draft.checkIn == null || draft.checkOut == null) return;
+        String title = "Проживание в отеле Люма · " + draft.room;
+        String description = "Гость: " + draft.fullName.trim() + "\nНомер: " + draft.room
+                + "\nГостей: " + draft.guests.trim() + "\nЗаезд: " + shortDate(draft.checkIn)
+                + ", выезд: " + shortDate(draft.checkOut);
+        Intent intent = new Intent(Intent.ACTION_INSERT)
+                .setData(CalendarContract.Events.CONTENT_URI)
+                .putExtra(CalendarContract.Events.TITLE, title)
+                .putExtra(CalendarContract.Events.DESCRIPTION, description)
+                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, draft.checkIn)
+                .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, draft.checkOut)
+                .putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, true);
+        try {
+            if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+            else Toast.makeText(this, "Приложение календаря не найдено", Toast.LENGTH_LONG).show();
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "Приложение календаря не найдено", Toast.LENGTH_LONG).show();
+        }
     }
 
     private static String date(long millis, String pattern) {
