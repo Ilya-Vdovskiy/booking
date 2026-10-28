@@ -10,6 +10,7 @@ Native Android application in **Java 17** for the hotel booking variant of Labor
 4. If Android Studio picks JDK 24 for Gradle and sync fails, set **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** to JDK 21 or 17. Java source compatibility remains 17.
 
 No server or account is needed. Booking is a local demonstration; no reservation is sent to a hotel.
+The Java port uses application ID `ru.lumastay.java`, so it can coexist with the original C# installation on the same phone.
 
 ## What to try
 
@@ -20,4 +21,4 @@ No server or account is needed. Booking is a local demonstration; no reservation
 - On Android 13+, use **Включить уведомления** to see the explanation and system permission prompt. Denying permission still allows the booking and calendar flow.
 - After confirmation, choose **В календарь** to open a prefilled all-day event. Save it in your calendar app. If none is installed, the app shows a message.
 
-The technical rationale is in [docs/Пояснительная_записка.md](docs/Пояснительная_записка.md). Run unit checks with `gradlew.bat :app:testDebugUnitTest`.
+The technical rationale is in [docs/Пояснительная_записка.md](docs/Пояснительная_записка.md). Run unit checks with `gradlew.bat :app:testDebugUnitTest`. On Windows, Gradle's JUnit worker may fail to locate test classes when the project path contains Cyrillic; temporarily map this same folder to an ASCII drive letter with `subst X: "<absolute path to lab-2>"`, run `X:\gradlew.bat :app:testDebugUnitTest`, then remove the mapping with `subst X: /D`.

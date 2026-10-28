@@ -191,7 +191,8 @@ public final class MainActivity extends AppCompatActivity {
                     Rect rect = new Rect();
                     target.getDrawingRect(rect);
                     scroll.offsetDescendantRectToMyCoords(target, rect);
-                    scroll.smoothScrollTo(0, Math.max(0, rect.top - 24));
+                    int topPadding = (int) (96 * getResources().getDisplayMetrics().density);
+                    scroll.smoothScrollTo(0, Math.max(0, rect.top - topPadding));
                     target.animate().alpha(.55f).setDuration(90).withEndAction(() -> target.animate().alpha(1f).setDuration(180).start()).start();
                     break;
                 }
@@ -347,7 +348,7 @@ public final class MainActivity extends AppCompatActivity {
                 + "\nГостей: " + draft.guests.trim() + "\nЗаезд: " + shortDate(draft.checkIn)
                 + ", выезд: " + shortDate(draft.checkOut);
         Intent intent = new Intent(Intent.ACTION_INSERT)
-                .setData(CalendarContract.Events.CONTENT_URI)
+                .setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.dir/event")
                 .putExtra(CalendarContract.Events.TITLE, title)
                 .putExtra(CalendarContract.Events.DESCRIPTION, description)
                 .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, draft.checkIn)
